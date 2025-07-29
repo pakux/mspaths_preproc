@@ -11,7 +11,9 @@ __longitudinal__ = False
 
 
 from nipype import IdentityInterface, MapNode, Node, Workflow
-from nipype.interfaces.utility import Rename
+from nipype.interfaces.utility import Rename, Split
+
+from nipype.interfaces.ants import RegistrationSynQuick
 
 from wmi_nipype_workflows.register_to_mni import coregister_to_mni_wf
 from wmi_nipype_workflows.reports import RegistrationRPT
