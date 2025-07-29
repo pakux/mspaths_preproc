@@ -1,0 +1,4 @@
+git+https://gitlab.ukdd.de/nra/wmi/wmi_nipype_workflows.git
+nibabel
+nilearn
+bids
