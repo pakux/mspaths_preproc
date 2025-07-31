@@ -227,6 +227,6 @@ def gen_wf(available_inputs=[], report_dir="/home/paulkuntke/mspaths/report"):
                 ],
             ),
             (gen_wf.inputode, rprtbrainmask, [("T1w", "in_file")]),
-            (brainextract rprtbrainmask, [("BrainExtractionMask", "mask")]),
+            (brainextract, rprtbrainmask, [("BrainExtractionMask", "mask")]),
         ]
     ) 
