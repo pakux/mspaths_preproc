@@ -6,18 +6,22 @@ __email__ = "paul.kuntke@uniklinikum-dresden.de"
 __license__ = "BSD 3 Clause"
 
 __derivative__ = "reg_to_mni"
-__Version__ = "0.1"
+__version__ = "0.1"
 __longitudinal__ = False
 
-
+from os.path import abspath
 from nipype import IdentityInterface, MapNode, Node, Workflow
-from nipype.interfaces.utility import Rename, Split
+from nipype.interfaces.utility import Rename, Split, Merge
 
-from nipype.interfaces.ants import RegistrationSynQuick
+from nipype.interfaces.ants import RegistrationSynQuick, BrainExtraction
+from nipype.interfaces.fsl.maths import ApplyMask
 
 from wmi_nipype_workflows.register_to_mni import coregister_to_mni_wf
-from wmi_nipype_workflows.reports import RegistrationRPT
+from wmi_nipype_workflows.brainextract_workflow import brainextraction_wf
+
+from wmi_nipype_workflows.reports import RegistrationRPT, SegmentationRPT
 from wmi_nipype_workflows.wmi_workflow import WmiWorkflow
+
 
 """
 This workflow registers Images into MNI-Space
@@ -47,7 +51,7 @@ inputqueries = {
 
 
 @WmiWorkflow
-def gen_wf(available_inputs=[], report_dir="tmp/report"):
+def gen_wf(available_inputs=[], report_dir="/home/paulkuntke/mspaths/report"):
     """
     Create actual WmiWorkflow
     """
@@ -57,29 +61,40 @@ def gen_wf(available_inputs=[], report_dir="tmp/report"):
         "xfm_@t1w2mni",
         "xfm_@affine2mni",
         "anat_@t1wmnispace",
-        "anat_@mrainmaskmnispace",
+        "anat_@imagemnispace",
     ]
 
-    register =  Node(
+    register =  MapNode(
         RegistrationSynQuick(transform_type="a", precision_type="float"),
+        iterfield=['moving_image'],
         name="register",
     )
 
     t1w_split = Node(Split(splits=[1], squeeze=True), name="t1w_split")  # Squeeze T1w
     flair_split = Node(Split(splits=[1], squeeze=True), name="flair_split")  # Squeeze FLAIR
 
+    brainextract = Node(
+        BrainExtraction(
+            brain_probability_mask=abspath("templates/OASIS/T_template0_BrainCerebellumProbabilityMask.nii.gz"),
+            brain_template=abspath("templates/T_template0.nii.gz"),
+            extraction_registration_mask=abspath("templates/OASIS/T_template0_BrainCerebellumRegistrationMask.nii.gz")
+        ),
+        name="brainextract",
+    ) 
+    brainmask_merger = Node(Merge(1), name="brainmask_merger")
+    applymask_flair = MapNode(ApplyMask(), iterfield=["in_file"], name='applymask_flair')
+
     rename_image = MapNode(
         Rename(
-            format_string="sub-%(subject)s_ses-%(session)s_space-MNI152%(bidstags)s_%(suffix)s",
+            format_string="sub-%(subject)s_ses-%(session)s_space-MNI152_FLAIR",
             keep_ext=True,
-            parse_string=r"sub-.+_ses-.+_space-[\w|\d]+(?P<bidstags>(_\w+-[\w|\d]+)*)_(?P<suffix>\w+)_trans\.nii.*",
         ),
         iterfield=["in_file"],
         name="rename_image",
     )
     rename_t1w_warpfile = Node(
         Rename(
-            format_string="sub-%(subject)s_ses-%(session)s_from-original_to-MNI152_desc-forward_xfm",
+            format_string="sub-%(subject)s_ses-%(session)s_from-T1w_to-MNI152_desc-forward_xfm",
             keep_ext=True,
         ),
         name="rename_t1w_warpfile",
@@ -87,7 +102,7 @@ def gen_wf(available_inputs=[], report_dir="tmp/report"):
 
     rename_t1w_affine = Node(
         Rename(
-            format_string="sub-%(subject)s_ses-%(session)s_from-original_to-MNI152_desc-forward_xfm",
+            format_string="sub-%(subject)s_ses-%(session)s_from-T1w_to-MNI152_desc-forward_xfm",
             keep_ext=True,
         ),
         name="rename_t1w_affine",
@@ -103,20 +118,21 @@ def gen_wf(available_inputs=[], report_dir="tmp/report"):
 
     outputnode = Node(IdentityInterface(fields=outputfields), name="outputnode")
 
-    registration_wf = coregister_to_mni_wf(coreg_masks=True)
+    registration_wf = coregister_to_mni_wf(skullstripped=True, coreg_masks=True)
+    
     gen_wf.wf = Workflow(name=__derivative__)
     gen_wf.wf.connect(
         [
             # Register FLAIR to T1W-Space
             (gen_wf.inputnode, t1w_split, [('T1w', 'inlist')]),
-            (gen_wf.inputnode, flair_split, [('FLAIR', 'inlist')]),
+            (gen_wf.inputnode, register, [('FLAIR', 'moving_image')]),
             (t1w_split, register, [('out1', 'fixed_image')]),
-            (flair_split, register, [('out1', 'moving_image')]),
+            (t1w_split, brainextract, [("anatomical_image")]),
             (
-                gen_wf.inputnode,
+                brainextract,
                 registration_wf,
                 [
-                    ("T1w", "inputnode.t1"),
+                    ("BrainExtractionBrain", "inputnode.t1"),
                 ],
             ),
             # T1w
@@ -128,6 +144,9 @@ def gen_wf(available_inputs=[], report_dir="tmp/report"):
             (registration_wf, rename_t1w, [("outputnode.t1_registered", "in_file")]),
             (rename_t1w, outputnode, [("out_file", "anat_@t1w")]),
             # Coregistered files
+            (brainextract, applymask_flair, [('BrainExtractionMask', 'mask')]),
+            (register, applymask_flair, [("warped_image", "in_file")]),
+            (applymask_flair, registration_wf, [('out_file', 'inputnode.coreg_files')]),
             (
                 gen_wf.inputnode,
                 rename_image,
@@ -137,6 +156,7 @@ def gen_wf(available_inputs=[], report_dir="tmp/report"):
             (rename_image, outputnode, [("out_file", "anat_@imagemnispace")]),
         ]
     )
+
 
     # Now Connect the Warpfile
     gen_wf.wf.connect(
@@ -171,16 +191,20 @@ def gen_wf(available_inputs=[], report_dir="tmp/report"):
             (
                 rename_t1w_affine,
                 outputnode,
-                [("out_file", "xfm_@affinemdbrain2mni")],
+                [("out_file", "xfm_@affine2mni")],
             ),
         ]
     )
 
+
     ### Additionally create Registration Reports
-""" 
     rprtt1w = Node(
         RegistrationRPT(contrast="T1w", command="reg_to_mni", report_dir=report_dir),
         name="rprtt1w",
+    )
+    rprtbrainmask = Node(
+        SegmentationRPT(contrast="T1w", command="antsBrainExtraction", report_dir=report_dir),
+        name="rprtbrainmask"
     )
     gen_wf.wf.connect(
         [
@@ -194,5 +218,15 @@ def gen_wf(available_inputs=[], report_dir="tmp/report"):
             ),
             (registration_wf, rprtt1w, [("inputnode.template", "in_file")]),
             (registration_wf, rprtt1w, [("outputnode.t1_registered", "moving_img")]),
+            (
+                gen_wf.inputnode,
+                rprtbrainmask,
+                [
+                    ("subject", "subject_id"),
+                    ("session", "session_id"),
+                ],
+            ),
+            (gen_wf.inputode, rprtbrainmask, [("T1w", "in_file")]),
+            (brainextract rprtbrainmask, [("BrainExtractionMask", "mask")]),
         ]
-    ) """
+    ) 
