@@ -127,18 +127,6 @@ def gen_wf(available_inputs=[], report_dir="tmp/report"):
             ),
             (registration_wf, rename_t1w, [("outputnode.t1_registered", "in_file")]),
             (rename_t1w, outputnode, [("out_file", "anat_@t1w")]),
-            # Coregistered coreg_masks
-            (
-                gen_wf.inputnode,
-                rename_mask,
-                [("subject", "subject"), ("session", "session")],
-            ),
-            (
-                registration_wf,
-                rename_mask,
-                [("outputnode.coregistered_masks", "in_file")],
-            ),
-            (rename_mask, outputnode, [("out_file", "anat_@maskmnispace")]),
             # Coregistered files
             (
                 gen_wf.inputnode,
@@ -189,7 +177,7 @@ def gen_wf(available_inputs=[], report_dir="tmp/report"):
     )
 
     ### Additionally create Registration Reports
-
+""" 
     rprtt1w = Node(
         RegistrationRPT(contrast="T1w", command="reg_to_mni", report_dir=report_dir),
         name="rprtt1w",
@@ -207,4 +195,4 @@ def gen_wf(available_inputs=[], report_dir="tmp/report"):
             (registration_wf, rprtt1w, [("inputnode.template", "in_file")]),
             (registration_wf, rprtt1w, [("outputnode.t1_registered", "moving_img")]),
         ]
-    )
+    ) """
