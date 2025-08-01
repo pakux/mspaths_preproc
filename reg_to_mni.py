@@ -17,7 +17,6 @@ from nipype.interfaces.ants import RegistrationSynQuick, BrainExtraction
 from nipype.interfaces.fsl.maths import ApplyMask
 
 from wmi_nipype_workflows.register_to_mni import coregister_to_mni_wf
-from wmi_nipype_workflows.brainextract_workflow import brainextraction_wf
 
 from wmi_nipype_workflows.reports import RegistrationRPT, SegmentationRPT
 from wmi_nipype_workflows.wmi_workflow import WmiWorkflow
@@ -62,6 +61,8 @@ def gen_wf(available_inputs=[], report_dir="/home/paulkuntke/mspaths/report"):
         "xfm_@affine2mni",
         "anat_@t1wmnispace",
         "anat_@imagemnispace",
+        "anat_@t1wskullstripped",
+        "anat_@brainmask"
     ]
 
     register =  MapNode(
@@ -116,6 +117,20 @@ def gen_wf(available_inputs=[], report_dir="/home/paulkuntke/mspaths/report"):
         name="rename_t1w",
     )
 
+    rename_skullstripped = Node(
+        Rename(
+            format_string="sub-%(subject)s_ses-%(session)s_desc-brain_T1w",
+            keep_ext=True,
+        ),
+        name="rename_skullstripped"
+    )
+    rename_brainmask = Node(
+        Rename(
+            format_string="sub-%(subject)s_ses-%(session)s_desc-brain_mask",
+            keep_ext=True,
+        ),
+        name="rename_brainmask"
+    )
     outputnode = Node(IdentityInterface(fields=outputfields), name="outputnode")
 
     registration_wf = coregister_to_mni_wf(skullstripped=True, coreg_masks=True)
@@ -127,7 +142,7 @@ def gen_wf(available_inputs=[], report_dir="/home/paulkuntke/mspaths/report"):
             (gen_wf.inputnode, t1w_split, [('T1w', 'inlist')]),
             (gen_wf.inputnode, register, [('FLAIR', 'moving_image')]),
             (t1w_split, register, [('out1', 'fixed_image')]),
-            (t1w_split, brainextract, [("anatomical_image")]),
+            (t1w_split, brainextract, [("out1", "anatomical_image")]),
             (
                 brainextract,
                 registration_wf,
@@ -147,13 +162,27 @@ def gen_wf(available_inputs=[], report_dir="/home/paulkuntke/mspaths/report"):
             (brainextract, applymask_flair, [('BrainExtractionMask', 'mask')]),
             (register, applymask_flair, [("warped_image", "in_file")]),
             (applymask_flair, registration_wf, [('out_file', 'inputnode.coreg_files')]),
-            (
-                gen_wf.inputnode,
-                rename_image,
+            (brainextract, brainmask_merger, [('BrainExtractionMask', 'in1')]),
+            (brainmask_merger, registration_wf, [('out', 'inputnode.coreg_masks')]),
+            (                gen_wf.inputnode, rename_image,
                 [("subject", "subject"), ("session", "session")],
             ),
             (registration_wf, rename_image, [("outputnode.coregistered", "in_file")]),
             (rename_image, outputnode, [("out_file", "anat_@imagemnispace")]),
+            (brainextract, rename_skullstripped, [("BrainExtractionBrain", "in_file")]),
+            (
+                gen_wf.inputnode,
+                rename_skullstripped,
+                [("subject", "subject"), ("session", "session")],
+            ),
+            (rename_skullstripped, outputnode, [("out_file", "anat_@t1wskullstripped")]),
+            (brainextract, rename_brainmask, [("BrainExtractionMask", "in_file")]),
+            (
+                gen_wf.inputnode,
+                rename_brainmask,
+                [("subject", "subject"), ("session", "session")],
+            ),
+            (rename_brainmask, outputnode, [("out_file", "anat_@brainmask")])
         ]
     )
 
@@ -226,7 +255,7 @@ def gen_wf(available_inputs=[], report_dir="/home/paulkuntke/mspaths/report"):
                     ("session", "session_id"),
                 ],
             ),
-            (gen_wf.inputode, rprtbrainmask, [("T1w", "in_file")]),
+            (t1w_split, rprtbrainmask, [("out1", "in_file")]),
             (brainextract, rprtbrainmask, [("BrainExtractionMask", "mask")]),
         ]
     ) 
