@@ -159,7 +159,7 @@ def gen_wf(available_inputs=[], report_dir="/home/paulkuntke/mspaths/report"):
             (registration_wf, rename_t1w, [("outputnode.t1_registered", "in_file")]),
             (rename_t1w, outputnode, [("out_file", "anat_@t1w")]),
             # Coregistered files
-            (brainextract, applymask_flair, [('BrainExtractionMask', 'mask')]),
+            (brainextract, applymask_flair, [('BrainExtractionMask', 'mask_file')]),
             (register, applymask_flair, [("warped_image", "in_file")]),
             (applymask_flair, registration_wf, [('out_file', 'inputnode.coreg_files')]),
             (brainextract, brainmask_merger, [('BrainExtractionMask', 'in1')]),
