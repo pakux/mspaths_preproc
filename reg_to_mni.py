@@ -82,6 +82,10 @@ def gen_wf(available_inputs=[], report_dir="/home/paulkuntke/mspaths/report"):
         ),
         name="brainextract",
     ) 
+
+    brainextract.n_procs=16
+    brainextract.mem_gb=8
+
     brainmask_merger = Node(Merge(1), name="brainmask_merger")
     applymask_flair = MapNode(ApplyMask(), iterfield=["in_file"], name='applymask_flair')
 
