@@ -204,6 +204,8 @@ def create_participants_tsv(mspaths_dir, bidsdir, group:str|None = None):
     if len(medhist_df) > 0:
         df = pd.merge(df, medhist_df, on=['mpi', 'site'], how='left')
 
+
+
     df.sex = df.sex.str.lower() # the tables are inconsistent in the use of caps
     df.sex.replace('undifferentiated', pd.NaT) #  some people have different entries in sex => remove the undifferentiated to get entries for those patients who
                                                    # have only                                                
@@ -218,6 +220,10 @@ def create_participants_tsv(mspaths_dir, bidsdir, group:str|None = None):
     site_df = mpis_with_clear_site.query('mpi in @mpis')
     results_df = pd.merge(sex_df, site_df, on='mpi', how='outer')
     results_df = results_df.merge(pd.DataFrame({'mpi': mpis}), on='mpi', how='right')
+
+
+    
+
 
     # Read Birthyear and assume
     # df = prepared_tables["EMR Sociodemographics"]
