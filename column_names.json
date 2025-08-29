@@ -1,0 +1,57 @@
+{
+    "MSPT Sociodemographics": [
+        ["encounter_date", "encdate"],
+        ["race", "race_org"],
+        ["ethnicity", "ethnic"],
+        ["age_at_first_symptom", "agesymp"],
+        ["age_at_diagnosis", "agediag"]
+    ],
+    "MSPT Patientcharacteristics": [
+        ["encounter_date", "encdate"],
+        ["insurance", "insuranc"],
+        ["current_living_situation", "living"],
+        ["employment_status", "employ"],
+        ["mstype", "MS_Type"],
+        ["years_of_education", "educ"],
+        ["pdds_cat", "pdds" ],
+        ["pdds_scr", "pdds.score"],
+        ["walking_aid", "wkaid"],
+        ["walking_aid_one_hand", "wkaid_hd"]
+
+    ],
+    "EMR Sociodemographics": [
+        ["effective_date", "effdate"],
+        ["sex", "sex_emr"],
+        ["race", "race_emr"],
+        ["ethnicity", "ethnic_emr"]
+    ],
+    "EMR Comorbidities": [],
+    "EMR Immunization": [],
+    "EMR Socialhistory": [
+        ["smk_code", "snomed_code"],
+        ["smk_stat", "smoking_status"]
+    ],
+
+    "Social History": [],
+    "EMR Socialhistory": [],
+    "MSPT Neurological": [
+        ["encdate", "test_date"],
+        ["mdt_avg", "mdt_summary_both_hands"],
+        ["wst_avg", "wst_avererage_trial_time"],
+        ["pst", "pst_processing_speed_test_total_correct"],
+        ["cst_100", "cst_1"] 
+    ], 
+    "EMR Medications": [
+        ["med_strt", "effective_date_from_time"],
+        ["med_end", "effective_date_to_time"],
+        ["med_code", "medication_code"],
+        ["med_name", "medication_name"],
+        ["med_dose", "dose_quantity"],
+        ["med_unit", "dose_quantity_units"]
+    ],
+    "MRI Quantitative Metrics": [],
+    "Biobanking": [
+        ["smk_stat", "smk_status"]
+    ]
+
+}
