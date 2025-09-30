@@ -9,15 +9,17 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
 import matplotlib.lines as mlines
+from sklearn.linear_model import LinearRegression
+from datetime import datetime
 
 from rich import print
-from rich.progress import track
-from rich.traceback import install
+from rich.progress import track, Progress
+# from rich.traceback import install
 from msp_tables import prepare_tables, log
 from scipy.stats import linregress
 from cmcrameri import cm as cmc
 
-install(show_locals=True)
+# install(show_locals=False, )
 log.setLevel("ERROR")
 bidsdir = '/mnt/bulk-vega/paulkuntke/mspaths'
 
@@ -126,7 +128,7 @@ mri_df.rename(columns={
 
 
 # Calculate deltas to get difference between baseline and follow-up-sessions
-for score in  ['pdds_scr', 'wst_avg', 'pst', 'mdt_avg', 'cst_100', 'cst_025']:
+for score in  ['pdds_scr', 'wst_avg', 'pst', 'mdt_avg', 'cst_100', 'cst_025', ]:
     for month in ["0m", "12m", "24m"]:
         mri_df[f'delta_{score}_{month}'] = mri_df[f'{score}_{month}'] - mri_df[f'{score}_0m']
     
@@ -280,7 +282,7 @@ neuro_df = pd.merge(
     on='mpi',
 )
 neuro_df['neurological_date'] = pd.to_datetime(neuro_df.neurological_date)
-neuro_df['date'] = pd.to_datetime(neuro_df.neurological_date)
+neuro_df['date'] = pd.to_datetime(neuro_df.date)
 neuro_df['encdate'] = pd.to_datetime(neuro_df.encdate, unit='s')
 
 neuro_df["dist_to_baseline"] = neuro_df["encdate"] - neuro_df["date"]
@@ -317,7 +319,7 @@ target_x = 0
 bbox_props = dict(boxstyle="round,pad=0.4", fc="white", ec="0.5", alpha=0.9)
 arrow_props = dict(arrowstyle="->", color="black", linewidth=1.2)
 
-for score in [ 'wst_avg', 'pst', 'mdt_avg', 'cst_100', 'cst_025']:
+for score in [ 'wst_avg', 'pst', 'mdt_avg', 'cst_100', 'cst_025', 'z_pst', 'z_mdt', 'z_wst', 'z_cst']:
     plt.figure(figsize=(12,6)) 
     ax = sns.lineplot(data=sample_df, x="dist_to_baseline_days", y=score, hue="mpi", legend=False, palette=colortable, markers=True, marker='o')
     sns.lineplot(data=sample_df_hc, x="dist_to_baseline_days", y=score, hue="mpi", legend=False, palette=colortable_hc, markers=True, marker='o')
@@ -678,57 +680,6 @@ Progressors are those with  e.g. 25% worsening p.a.
 """
 
 
-def extract_mpi(neuro_df):
-    # Ensure dates are in datetime format
-    neuro_df['neurological_date'] = pd.to_datetime(neuro_df['neurological_date'])
-    neuro_df['encdate'] = pd.to_datetime(neuro_df['encdate'])
-    
-    # Sort by mpi and encdate
-    neuro_df = neuro_df.sort_values(['mpi', 'encdate'])
-    
-    # Initialize lists to store results
-    condition1_mpi = []
-    condition2_mpi = []
-    
-    # Group by mpi and process each group
-    for mpi, group in neuro_df.groupby('mpi'):
-        # Get baseline mdt_avg and date
-        baseline_date = group['neurological_date'].iloc[0]
-        baseline_mdt = group.loc[group['encdate'] == baseline_date, 'mdt_avg'].iloc[0]
-        
-        # Filter data points after baseline
-        post_baseline = group[group['encdate'] > baseline_date]
-        
-        # Condition 1: Any time point with >=25% worsening after baseline
-        if not post_baseline.empty:
-            post_baseline['change'] = post_baseline['mdt_avg'] / baseline_mdt
-            if post_baseline['change'].max() >= 1.25:
-                condition1_mpi.append(mpi)
-        
-        # Condition 2: Worsening rate of >=25% per year
-        if len(post_baseline) >= 2:
-            # Calculate time in years from baseline
-            post_baseline['time_years'] = (post_baseline['encdate'] - baseline_date).dt.days / 365.25
-            
-            # Prepare data for regression
-            X = post_baseline[['time_years']]
-            y = post_baseline['mdt_avg']
-            
-            # Fit linear regression model
-            model = LinearRegression()
-            model.fit(X, y)
-            
-            # Calculate slope (annual change rate)
-            slope = model.coef_[0]
-            
-            # Check if the slope indicates >=25% worsening per year
-            if slope >= 0.25 * baseline_mdt:
-                condition2_mpi.append(mpi)
-    
-    return condition1_mpi, condition2_mpi
-
-
-
 neuro_df = neuro_df.sort_values(['mpi', 'encdate'])
 
 
@@ -739,16 +690,273 @@ for mpi, group in track(neuro_df.groupby('mpi')):
     # print(group)
     
     baseline_date = group['neurological_date'].iloc[0]
-    baseline_mdt = group['mdt_avg_0m'].iloc[0]
+    baseline_mdt = group['pst_0m'].iloc[0]
 
     post_baseline = group[group['encdate'] > baseline_date]
-
+    post_baseline.dropna(inplace=True)
 
     if not post_baseline.empty:
-        post_baseline['change'] = post_baseline['mdt_avg'] / baseline_mdt
+        post_baseline['change'] = post_baseline['pst'] / baseline_mdt
         if post_baseline['change'].max() >= 1.25:
             mpis_risen_by_25.append(mpi)
 
-    if not pd.isna(baseline_mdt):
+    if len(post_baseline) >= 2:
+        post_baseline['time_years'] = (post_baseline['encdate'] - baseline_date).dt.days / 365.25
+
+        # Prepare data for regression
+        X = post_baseline[['time_years']]
+        y = post_baseline['pst']
+            
+        # Fit linear regression model
+        model = LinearRegression()
+        model.fit(X, y)
+
+        # Calculate slope (annual change rate)
+        slope = model.coef_[0]
+            
+        # Check if the slope indicates >=25% worsening per year
+        if slope >= 0.25 * baseline_mdt:
+            mpis_annual_change_25.append(mpi)     
+# %%%
+
+
+plt.figure(figsize=(12,6))
+ax = sns.lineplot(data=neuro_df.groupby('mpi').get_group(neuro_df.mpi.drop_duplicates().to_list()[1])[['encdate','pst']].dropna(),
+            x='encdate',
+            y='pst',
+            markers=True,
+            marker='o'
+            )
+sns.scatterplot(data=neuro_df.groupby('mpi').get_group(neuro_df.mpi.to_list()[1])[['date','pst_0m']].dropna(),
+            x='date',
+            y='pst_0m',
+            color='red'
+            )
+ax.axvline( mri_df.query('mpi == "' + neuro_df.groupby('mpi').get_group(neuro_df.mpi.drop_duplicates().to_list()[1]).mpi.to_list()[0] + '" and session_id == "ses-001" ')['date'].to_list()[0], color="black")
+
+plt.show()
+
+plt.figure(figsize=(12,6))
+ax = sns.lineplot(data=neuro_df.groupby('mpi').get_group(neuro_df.mpi.drop_duplicates().to_list()[1])[['encdate','wst_avg']].dropna(),
+            x='encdate',
+            y='wst_avg',
+            markers=True,
+            marker='o'
+            )
+sns.scatterplot(data=neuro_df.groupby('mpi').get_group(neuro_df.mpi.to_list()[1])[['date','wst_avg_0m']].dropna(),
+            x='date',
+            y='wst_avg_0m',
+            color='red'
+            )
+ax.axvline( mri_df.query('mpi == "' + neuro_df.groupby('mpi').get_group(neuro_df.mpi.drop_duplicates().to_list()[1]).mpi.to_list()[0] + '" and session_id == "ses-001" ')['date'].to_list()[0], color="black")
+
+plt.show()
+
+
+plt.figure(figsize=(12,6))
+ax = sns.lineplot(data=neuro_df.groupby('mpi').get_group(neuro_df.mpi.drop_duplicates().to_list()[1])[['encdate','mdt_avg']].dropna(),
+            x='encdate',
+            y='mdt_avg',
+            markers=True,
+            marker='o'
+            )
+sns.scatterplot(data=neuro_df.groupby('mpi').get_group(neuro_df.mpi.to_list()[1])[['date','mdt_avg_0m']].dropna(),
+            x='date',
+            y='mdt_avg_0m',
+            color='red'
+            )
+ax.axvline( mri_df.query('mpi == "' + neuro_df.groupby('mpi').get_group(neuro_df.mpi.drop_duplicates().to_list()[1]).mpi.to_list()[0] + '" and session_id == "ses-001" ')['date'].to_list()[0], color="black")
+
+plt.show()
+
+
+plt.figure(figsize=(12,6))
+ax = sns.lineplot(data=neuro_df.groupby('mpi').get_group(neuro_df.mpi.drop_duplicates().to_list()[1])[['encdate','cst_025']].dropna(),
+            x='encdate',
+            y='cst_025',
+            markers=True,
+            marker='o'
+            )
+sns.scatterplot(data=neuro_df.groupby('mpi').get_group(neuro_df.mpi.to_list()[1])[['date','cst_025_0m']].dropna(),
+            x='date',
+            y='cst_025_0m',
+            color='red'
+            )
+ax.axvline( mri_df.query('mpi == "' + neuro_df.groupby('mpi').get_group(neuro_df.mpi.drop_duplicates().to_list()[1]).mpi.to_list()[0] + '" and session_id == "ses-001" ')['date'].to_list()[0], color="black", alpha=0.9)
+plt.show()
+
+# %%%%
+# Draw Z-Scores over Time
+
+
+def plot_zscores(mpi, date_col='encdate', scores=None, show_mean=True):
+    """
+    Plot Z-Scores development for given MPI
+    """
+
+    if scores is None:
+        scores = ['z_cst', 'z_pst', 'z_wst', 'z_mdt']
+
+
+    # Determine mean-zscore (are they adjusted? => it's not in the datesetdescription)
+    zscore_means = pd.DataFrame(neuro_df.groupby(by=['mpi', date_col])[scores].mean().mean(axis=1))
+    zscore_means.columns = ['z_score_mean']
+    fig = plt.figure(figsize=(12,6))
+    try:
+
+        data = neuro_df.groupby('mpi').get_group(mpi)[[date_col] + scores ]
+    except:
+        return None
+
+    for score in scores:
+
+       sns.lineplot(data=data,
+                    x=date_col,
+                    y=score,
+                    markers=True,
+                    marker='o',
+                    label=score,
+                    alpha=0.3,
+                    ci=None
+                    )
+
+    if show_mean:
+        sns.lineplot(data=zscore_means.query('mpi == @mpi'),
+                    x=date_col,
+                    y='z_score_mean',
+                    color='grey',
+                    markers=True,
+                    marker='o',
+                    label='mean',
+                    dashes=False,
+                    linestyle='--',
+                    linewidth=2
+                    )
+    legend = plt.legend()
+    ax = fig.get_axes()[0]
+    ax.set_ylabel('z-score')
+    ax.set_xlabel('date')
+    ax.set_title(mpi)
+    if date_col == 'encdate':
+        ax.axvline( mri_df.query('mpi == @mpi and session_id == "ses-001" ')['date'].to_list()[0], color="grey", alpha=0.5, linestyle='--')
+    elif date_col == "dist_to_baseline_days":
+        ax.axvline(0, alpha=0.5, color="grey", linestyle="--")
+    ax.axhline(0, alpha=0.5, color="grey")
+
+    return fig
+
+# %%%%
+
+pat_mpis = mri_df.query('group=="patients"').mpi.drop_duplicates().to_list()
+
+for mpi in random.sample(pat_mpis, 10):
+
+    fig = plot_zscores(mpi, 'dist_to_baseline_days')
+    if fig is None:
+        continue
+    ax = fig.get_axes()[0]
+    ax.set_ylabel('z-score')
+    ax.set_xlabel('Days since MRI')
+    plt.show()
+
+
+# %%%
+# 
+# Find pogression
+# (1) "worst" progression == any patient who _at any time point after baseline_ reached threshold T (even if it became better after)
+# (2) "last" progression == any patient who reached threshold T at their _last_ time point 
+# (3) averaged == these measurements are a bit zig-zaggy, so you can smooth them by using different kernels, e.g. the [1/3, 1/3, 1/3] kernel, 
+#      or an [1/4, 1/2, 1/4] kernel and then do the worst progressor
+# (4) you can make a linear fit for each patient and everyone who's trendline goes up is a progressor
         
-         
+
+# def find_progression:
+
+
+# Find worst progression at any Timepoint after baseline
+for score in ["pst", "mdt", "wst", "cst"]:
+    progressors = list(neuro_df.query(f'encdate > date and z_{score} < -2').mpi.unique())
+    mri_df[f'worst_progression_{score}_2z'] = mri_df['mpi'].isin(progressors)
+for score in ["pst", "mdt", "wst", "cst"]:
+    progressors = list(neuro_df.query(f'encdate > date and z_{score} < -1.5').mpi.unique())
+    mri_df[f'worst_progression_{score}_15z'] = mri_df['mpi'].isin(progressors)
+
+
+# any patient who reached threshold T at their _last_ time point
+for score in ["pst", "mdt", "wst", "cst"]:
+    progressors = list(neuro_df.query('encdate > date').sort_values(by=["mpi", "encdate"]).groupby('mpi').last().query(f'z_{score} < -2').reset_index().mpi.unique())
+    mri_df[f'last_progression_{score}'] = mri_df['mpi'].isin(progressors) 
+for score in ["pst", "mdt", "wst", "cst"]:
+    progressors = list(neuro_df.query('encdate > date').sort_values(by=["mpi", "encdate"]).groupby('mpi').last().query(f'z_{score} < -1.5').reset_index().mpi.unique())
+    mri_df[f'last_progression_{score}'] = mri_df['mpi'].isin(progressors)
+# smoothed_pst = last_entries['pst'].rolling(window=3, min_periods=1).mean()
+
+
+# you can make a linear fit for each patient and everyone who's trendline goes up is a progressor
+def fit_poly(g, score):
+    
+    x = g['dist_to_baseline_days'].values
+    y = g[score].values
+    n = len(x)
+    if n < 2 or np.allclose(x, x[0]) or np.allclose(y, y[0]):
+        return pd.Series({f'{score}_n': n, f'{score}_slope': np.nan, f'{score}_intercept': np.nan, f'{score}_r_squared': np.nan})
+    slope, intercept = np.polyfit(x, y, 1)
+    yhat = slope * x + intercept
+    ss_res = np.sum((y - yhat)**2)
+    ss_tot = np.sum((y - y.mean())**2)
+    r2 = 1 - ss_res/ss_tot if ss_tot != 0 else np.nan
+    return pd.Series({f'{score}_n': n, f'{score}_slope': slope, f'{score}_intercept': intercept, f'{score}_r_squared': r2})
+
+for score in ["pst", "wst_avg", "mdt_avg", "cst_100", "cst_025"]:
+    lin_fit = neuro_df.groupby('mpi').apply(lambda x: fit_poly(x, score)).reset_index().drop_duplicates(subset='mpi')
+    mri_df = mri_df.merge(right=lin_fit, on='mpi', how='left')
+
+
+
+
+# %%%
+
+
+# %%%
+
+
+print("Controls")
+print(mri_df.query('group == "controls"').mdt_avg_slope.mean())
+print(mri_df.query('group == "controls"').mdt_avg_slope.std())
+
+print("Patients")
+print(mri_df.query('group == "patients"').mdt_avg_slope.mean())
+print(mri_df.query('group == "patients"').mdt_avg_slope.std())
+
+
+# Now we mark all those with a slope of < -0.01 as progressors
+mri_df[f'pst_slope_progressor'] = False
+mri_df.loc[mri_df.query(f'group=="patients" and pst_slope < -0.01').index, f'pst_slope_progressor'] = True
+mri_df[f'wst_slope_progressor'] = False
+mri_df.loc[mri_df.query(f'group=="patients" and wst_avg_slope > 0.0').index, f'wst_slope_progressor'] = True
+mri_df[f'mdt_slope_progressor'] = False
+mri_df.loc[mri_df.query(f'group=="patients" and mdt_avg_slope < 0.0').index, f'mdt_slope_progressor'] = True
+mri_df[f'cst_025_slope_progressor'] = False
+mri_df.loc[mri_df.query(f'group=="patients" and cst_025_slope < 0.0').index, f'cst_025_slope_progressor'] = True
+mri_df[f'cst_100_slope_progressor'] = False
+mri_df.loc[mri_df.query(f'group=="patients" and cst_100_slope < 0.0').index, f'cst_100_slope_progressor'] = True
+# %%
+neuro_df['pst_smoothed_3'] = neuro_df.query('encdate > date').sort_values(by=["mpi", "encdate"]).groupby('mpi')['pst'].transform(
+    lambda x: x.rolling(window=3, min_periods=1).mean()
+)
+neuro_df['pst_smoothed_3'] = neuro_df['pst_smoothed_3'].fillna(neuro_df['pst'])
+
+
+for mpi in random.sample(pat_mpis, 10):
+    fig = plot_zscores(mpi, 'dist_to_baseline_days', ['pst', 'pst_smoothed_3'], show_mean=False)
+    if fig is None:
+        continue
+    ax = fig.get_axes()[0]
+    ax.set_ylabel('pst')
+    ax.set_xlabel('Days since MRI')
+    plt.show()
+
+mpi = "500004010"
+plot_zscores(mpi, 'dist_to_baseline_days', ['pst', 'pst_smoothed_3'], show_mean=False)
+
+
