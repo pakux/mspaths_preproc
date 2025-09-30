@@ -930,16 +930,16 @@ print(mri_df.query('group == "patients"').mdt_avg_slope.std())
 
 
 # Now we mark all those with a slope of < -0.01 as progressors
-mri_df[f'pst_slope_progressor'] = False
-mri_df.loc[mri_df.query(f'group=="patients" and pst_slope < -0.01').index, f'pst_slope_progressor'] = True
-mri_df[f'wst_slope_progressor'] = False
-mri_df.loc[mri_df.query(f'group=="patients" and wst_avg_slope > 0.0').index, f'wst_slope_progressor'] = True
-mri_df[f'mdt_slope_progressor'] = False
-mri_df.loc[mri_df.query(f'group=="patients" and mdt_avg_slope < 0.0').index, f'mdt_slope_progressor'] = True
-mri_df[f'cst_025_slope_progressor'] = False
-mri_df.loc[mri_df.query(f'group=="patients" and cst_025_slope < 0.0').index, f'cst_025_slope_progressor'] = True
-mri_df[f'cst_100_slope_progressor'] = False
-mri_df.loc[mri_df.query(f'group=="patients" and cst_100_slope < 0.0').index, f'cst_100_slope_progressor'] = True
+mri_df['pst_slope_progressor'] = False
+mri_df.loc[mri_df.query('group=="patients" and pst_slope < -0.01').index, 'pst_slope_progressor'] = True
+mri_df['wst_slope_progressor'] = False
+mri_df.loc[mri_df.query('group=="patients" and wst_avg_slope > 0.0').index, 'wst_slope_progressor'] = True
+mri_df['mdt_slope_progressor'] = False
+mri_df.loc[mri_df.query('group=="patients" and mdt_avg_slope < 0.0').index, 'mdt_slope_progressor'] = True
+mri_df['cst_025_slope_progressor'] = False
+mri_df.loc[mri_df.query('group=="patients" and cst_025_slope < 0.0').index, 'cst_025_slope_progressor'] = True
+mri_df['cst_100_slope_progressor'] = False
+mri_df.loc[mri_df.query('group=="patients" and cst_100_slope < 0.0').index, 'cst_100_slope_progressor'] = True
 # %%
 neuro_df['pst_smoothed_3'] = neuro_df.query('encdate > date').sort_values(by=["mpi", "encdate"]).groupby('mpi')['pst'].transform(
     lambda x: x.rolling(window=3, min_periods=1).mean()
